@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Super Vôlei</title>
+<style>html,body{margin:0;height:100%;background:#0b1a33}</style>
+</head>
+<body>
+<script>
+/* Carregador do app: abre a versão baixada por OTA (se existir e for mais nova que a do APK);
+   se a última tentativa travou, apaga a versão baixada e volta pra versão que vem dentro do APK. */
+(function () {
+  function bundled() { location.replace('game.html'); }
+  function openDB(cb) {
+    try {
+      var rq = indexedDB.open('volei-ota', 1);
+      rq.onupgradeneeded = function () { rq.result.createObjectStore('kv'); };
+      rq.onsuccess = function () { cb(null, rq.result); };
+      rq.onerror = function () { cb(rq.error || new Error('idb')); };
+    } catch (e) { cb(e); }
+  }
+  function clearStored(db, done) {
+    try {
+      var tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').delete('game');
+      tx.oncomplete = done; tx.onerror = done;
+    } catch (e) { done(); }
+  }
+  openDB(function (err, db) {
+    if (err) return bundled();
+    var rq;
+    try { rq = db.transaction('kv').objectStore('kv').get('game'); } catch (e) { return bundled(); }
+    rq.onerror = bundled;
+    rq.onsuccess = function () {
+      var g = rq.result;
+      if (!g || !g.html) return bundled();
+      var pending = null; try { pending = localStorage.getItem('volei_boot'); } catch (e) {}
+      fetch('version.json').then(function (r) { return r.json(); }).catch(function () { return { version: 0 }; }).then(function (b) {
+        if (g.version <= (b.version || 0) || pending === 'pending') {
+          // APK mais novo que o OTA guardado, ou a versão baixada não abriu direito na última vez
+          try { localStorage.setItem('volei_boot', 'ok'); } catch (e) {}
+          clearStored(db, bundled);
+        } else {
+          try { localStorage.setItem('volei_boot', 'pending'); } catch (e) {}
+          document.open(); document.write(g.html); document.close();
+        }
+      });
+    };
+  });
+})();
+</script>
+</body>
+</html>
