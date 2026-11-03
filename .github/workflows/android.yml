@@ -1,0 +1,62 @@
+name: Gerar APK
+
+# Rode manualmente: aba Actions > "Gerar APK" > Run workflow.
+# Só precisa gerar APK novo quando mudar o app em si; o jogo atualiza sozinho por OTA (www/game.html + www/version.json).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Montar a pasta www (index.html + game.html + version.json)
+        run: |
+          mkdir -p www
+          cp index.html game.html version.json www/
+
+      - name: Instalar Capacitor
+        run: npm install
+
+      - name: Criar projeto Android
+        run: npx cap add android
+
+      - name: Usar a assinatura fixa (APKs novos instalam por cima, sem perder dados)
+        run: |
+          mkdir -p ~/.android
+          base64 -d debug.keystore.b64 > ~/.android/debug.keystore
+
+      - name: Copiar o Three.js pro app (o jogo roda offline)
+        run: cp node_modules/three/build/three.min.js www/three.min.js
+
+      - name: Copiar o jogo pro app
+        run: npx cap sync android
+
+      - name: Compilar
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Renomear APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk super-volei.apk
+
+      - name: Publicar APK na aba Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: Super Vôlei (APK #${{ github.run_number }})
+          files: super-volei.apk
